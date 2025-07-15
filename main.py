@@ -271,7 +271,7 @@ class AppCardWidget(QFrame):
 
         # 删除按钮使用绝对定位，不占用布局空间
         self.delete_btn = QPushButton("×", self)
-        self.delete_btn.setFixedSize(18, 18)
+        self.delete_btn.setFixedSize(20, 20)
         self.delete_btn.clicked.connect(self.delete_app)
         self.delete_btn.hide()  # 初始隐藏
         self.delete_btn.setStyleSheet("""
@@ -279,9 +279,12 @@ class AppCardWidget(QFrame):
                 background-color: #ef4444;
                 color: white;
                 border: none;
-                border-radius: 9px;
-                font-size: 12px;
+                border-radius: 10px;
+                font-size: 18px;
                 font-weight: bold;
+                text-align: center;
+                padding: 0px;
+                margin: 0px;
             }
             QPushButton:hover {
                 background-color: #dc2626;
@@ -289,7 +292,7 @@ class AppCardWidget(QFrame):
         """)
 
         # 将删除按钮定位到右上角
-        self.delete_btn.move(self.width() - 20, 2)
+        # self.delete_btn.move(self.width() - 22, 2)
 
         # 双击启动应用
         self.mouseDoubleClickEvent = self.launch_app
@@ -297,7 +300,7 @@ class AppCardWidget(QFrame):
     def resizeEvent(self, event):
         """窗口大小改变时重新定位删除按钮"""
         super().resizeEvent(event)
-        self.delete_btn.move(self.width() - 20, 2)
+        self.delete_btn.move(self.width() - 22, 2)
 
     def enterEvent(self, event):
         """鼠标进入事件"""
@@ -312,7 +315,7 @@ class AppCardWidget(QFrame):
     def delete_app(self):
         """删除应用"""
         reply = QMessageBox.question(
-            self, "确认", f"确定要删除应用：\n{os.path.basename(self.path)}？",
+            self.parent_launcher, "确认", f"确定要删除应用：\n{os.path.basename(self.path)}？",
             QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
             self.parent_launcher.remove_app_from_current_group(self.path)
@@ -452,7 +455,7 @@ class SoftwareLauncher(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowIcon(QIcon("app.ico"))
-        self.setWindowTitle("软件组启动器")
+        self.setWindowTitle("AProgram")
         self.setAcceptDrops(True)
         self.resize(1200, 800)
 
