@@ -15,10 +15,13 @@ from PyQt5.QtCore import Qt, QSize
 import pythoncom
 from win32com.client import Dispatch
 import win32gui
+import win32ui
 import win32con
 import win32api
 import ctypes
 import ctypes.wintypes as wintypes
+from PIL import Image
+import tempfile
 
 CONFIG_FILE = "software_groups.json"
 SETTINGS_FILE = "settings.json"
@@ -135,10 +138,15 @@ def get_icon_from_lnk(path):
 
 
 def extract_icon_from_exe(path):
+    """
+    从EXE文件提取图标，使用win32ui的方法（参考test.py）
+    """
     try:
+        # 提取图标句柄
         large, _ = win32gui.ExtractIconEx(path, 0)
         if not large:
             print(f"[extract_icon_from_exe] 未提取到图标: {path}")
+            # 尝试QIcon直接加载作为备选
             icon = QIcon(path)
             if not icon.isNull():
                 print(f"[extract_icon_from_exe] QIcon直接加载exe成功: {path}")
@@ -146,60 +154,65 @@ def extract_icon_from_exe(path):
             else:
                 print(f"[extract_icon_from_exe] QIcon直接加载exe失败: {path}")
             return QIcon()
+
         hicon = large[0]
-        hdc = win32gui.CreateCompatibleDC(0)
-        size = win32api.GetSystemMetrics(win32con.SM_CXICON)
-        hbitmap = win32gui.CreateCompatibleBitmap(hdc, size, size)
-        win32gui.SelectObject(hdc, hbitmap)
-        win32gui.DrawIconEx(hdc, 0, 0, hicon, size, size,
-                            0, 0, win32con.DI_NORMAL)
+        ico_x = win32api.GetSystemMetrics(win32con.SM_CXICON)
 
-        class BITMAPINFOHEADER(ctypes.Structure):
-            _fields_ = [
-                ('biSize', ctypes.c_uint32),
-                ('biWidth', ctypes.c_int32),
-                ('biHeight', ctypes.c_int32),
-                ('biPlanes', ctypes.c_uint16),
-                ('biBitCount', ctypes.c_uint16),
-                ('biCompression', ctypes.c_uint32),
-                ('biSizeImage', ctypes.c_uint32),
-                ('biXPelsPerMeter', ctypes.c_int32),
-                ('biYPelsPerMeter', ctypes.c_int32),
-                ('biClrUsed', ctypes.c_uint32),
-                ('biClrImportant', ctypes.c_uint32)
-            ]
+        # 创建设备上下文
+        hdc = win32ui.CreateDCFromHandle(win32gui.GetDC(0))
+        hdc_mem = hdc.CreateCompatibleDC()
 
-        bmi = BITMAPINFOHEADER()
-        bmi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
-        bmi.biWidth = size
-        bmi.biHeight = -size
-        bmi.biPlanes = 1
-        bmi.biBitCount = 32
-        bmi.biCompression = 0
+        # 创建位图
+        bmp = win32ui.CreateBitmap()
+        bmp.CreateCompatibleBitmap(hdc, ico_x, ico_x)
+        hdc_mem.SelectObject(bmp)
 
-        bits = ctypes.create_string_buffer(size * size * 4)
-        hbitmap_int = int(hbitmap)
-        hdc_int = int(hdc)
+        # 绘制图标到位图
+        win32gui.DrawIconEx(hdc_mem.GetHandleOutput(), 0, 0,
+                            hicon, ico_x, ico_x, 0, 0, win32con.DI_NORMAL)
 
-        ctypes.windll.gdi32.GetDIBits(
-            hdc_int,
-            hbitmap_int,
-            0,
-            size,
-            bits,
-            ctypes.byref(bmi),
-            0
-        )
+        # 创建临时文件
+        with tempfile.NamedTemporaryFile(suffix='.bmp', delete=False) as temp_bmp:
+            bmp_path = temp_bmp.name
 
-        image = QImage(bits, size, size, QImage.Format_ARGB32)
-        pixmap = QPixmap.fromImage(image)
-        win32gui.DestroyIcon(hicon)
-        icon = QIcon(pixmap)
-        print(
-            f"[extract_icon_from_exe] 成功提取图标: {path}, isNull={icon.isNull()}, pixmap.isNull={icon.pixmap(32, 32).isNull()}")
-        return icon
+        with tempfile.NamedTemporaryFile(suffix='.ico', delete=False) as temp_ico:
+            ico_path = temp_ico.name
+
+        try:
+            # 保存为BMP并转换为ICO
+            bmp.SaveBitmapFile(hdc_mem, bmp_path)
+            img = Image.open(bmp_path)
+            img.save(ico_path, format='ICO')
+
+            # 创建QIcon
+            icon = QIcon(ico_path)
+
+            # 清理临时文件
+            os.remove(bmp_path)
+            os.remove(ico_path)
+
+            # 销毁图标句柄
+            win32gui.DestroyIcon(hicon)
+
+            print(
+                f"[extract_icon_from_exe] 成功提取图标: {path}, isNull={icon.isNull()}, pixmap.isNull={icon.pixmap(32, 32).isNull()}")
+            return icon
+
+        except Exception as e:
+            # 清理临时文件
+            try:
+                os.remove(bmp_path)
+            except:
+                pass
+            try:
+                os.remove(ico_path)
+            except:
+                pass
+            raise e
+
     except Exception as e:
         print(f"[extract_icon_from_exe] 提取失败: {e}, 路径: {path}")
+        # 尝试QIcon直接加载作为备选
         icon = QIcon(path)
         if not icon.isNull():
             print(f"[extract_icon_from_exe] QIcon直接加载exe成功: {path}")
@@ -292,7 +305,7 @@ class AppCardWidget(QFrame):
         """)
 
         # 将删除按钮定位到右上角
-        # self.delete_btn.move(self.width() - 22, 2)
+        self.delete_btn.move(self.width() - 22, 2)
 
         # 双击启动应用
         self.mouseDoubleClickEvent = self.launch_app
