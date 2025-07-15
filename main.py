@@ -6,7 +6,7 @@ import winreg
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QListWidget, QPushButton, QVBoxLayout,
     QHBoxLayout, QListWidgetItem, QFileDialog, QInputDialog, QMessageBox, QLabel,
-    QMenu, QAction, QSystemTrayIcon, QCheckBox, QDialog, QFormLayout
+    QMenu, QAction, QSystemTrayIcon, QCheckBox, QDialog, QFormLayout, QFrame
 )
 from PyQt5.QtGui import QPixmap, QImage, QIcon, QFont
 from PyQt5.QtCore import Qt, QSize
@@ -216,6 +216,113 @@ def resolve_lnk(path):
         return shortcut.TargetPath
     except Exception:
         return path
+
+
+class AppCardWidget(QFrame):
+    def __init__(self, icon, name, path, parent_launcher):
+        super().__init__()
+        self.path = path
+        self.parent_launcher = parent_launcher
+
+        # 设置固定大小，与原来的程序列表项保持一致
+        scale = 1.666
+        self.setFixedSize(int(90*scale), int(90*scale))
+
+        # 设置样式，简化样式避免双层效果
+        self.setStyleSheet("""
+            AppCardWidget {
+                background-color: transparent;
+                border: none;
+                margin: 4px;
+                padding: 8px;
+            }
+            AppCardWidget:hover {
+                background-color: rgba(237, 242, 247, 0.6);
+                border-radius: 6px;
+            }
+            QLabel {
+                color: #2d3748;
+                font-size: 12px;
+                background: transparent;
+                border: none;
+            }
+        """)
+
+        # 使用绝对定位，让删除按钮不占用布局空间
+        # 创建主布局（只包含图标和名称）
+        layout = QVBoxLayout()
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+
+        # 图标区域
+        icon_label = QLabel()
+        icon_label.setPixmap(icon.pixmap(int(32*scale), int(32*scale)))
+        icon_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(icon_label)
+
+        # 名称区域
+        name_label = QLabel(name)
+        name_label.setAlignment(Qt.AlignCenter)
+        name_label.setWordWrap(True)
+        name_label.setMaximumHeight(int(24*scale))
+        layout.addWidget(name_label)
+
+        self.setLayout(layout)
+
+        # 删除按钮使用绝对定位，不占用布局空间
+        self.delete_btn = QPushButton("×", self)
+        self.delete_btn.setFixedSize(18, 18)
+        self.delete_btn.clicked.connect(self.delete_app)
+        self.delete_btn.hide()  # 初始隐藏
+        self.delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ef4444;
+                color: white;
+                border: none;
+                border-radius: 9px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #dc2626;
+            }
+        """)
+
+        # 将删除按钮定位到右上角
+        self.delete_btn.move(self.width() - 20, 2)
+
+        # 双击启动应用
+        self.mouseDoubleClickEvent = self.launch_app
+
+    def resizeEvent(self, event):
+        """窗口大小改变时重新定位删除按钮"""
+        super().resizeEvent(event)
+        self.delete_btn.move(self.width() - 20, 2)
+
+    def enterEvent(self, event):
+        """鼠标进入事件"""
+        self.delete_btn.show()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """鼠标离开事件"""
+        self.delete_btn.hide()
+        super().leaveEvent(event)
+
+    def delete_app(self):
+        """删除应用"""
+        reply = QMessageBox.question(
+            self, "确认", f"确定要删除应用：\n{os.path.basename(self.path)}？",
+            QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.parent_launcher.remove_app_from_current_group(self.path)
+
+    def launch_app(self, event):
+        """启动应用"""
+        try:
+            subprocess.Popen(self.path, shell=True)
+        except Exception as e:
+            QMessageBox.warning(self, "启动失败", f"无法启动应用：\n{str(e)}")
 
 
 class SettingsDialog(QDialog):
@@ -479,6 +586,9 @@ class SoftwareLauncher(QWidget):
         self.data = load_config()
         self.current_group = None
 
+        # 保留加载状态标记
+        self.loading_group = False  # 标记是否正在加载组
+
         # 初始化系统托盘
         self.setup_system_tray()
 
@@ -491,7 +601,7 @@ class SoftwareLauncher(QWidget):
 
         # 左侧：组列表
         self.group_list = QListWidget()
-        self.group_list.itemClicked.connect(self.on_group_selected)
+        self.group_list.itemClicked.connect(self.on_group_clicked)
         self.group_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.group_list.customContextMenuRequested.connect(
             self.show_group_context_menu)
@@ -500,17 +610,88 @@ class SoftwareLauncher(QWidget):
         self.status_label.setStyleSheet(
             f"color: #4a5568; font-size: {int(12*scale)}px; padding: {int(5*scale)}px {int(10*scale)}px; background: rgba(255,255,255,0.8); border-radius: {int(4*scale)}px; border: 1px solid #e2e8f0;")
         self.status_label.setAlignment(Qt.AlignCenter)
-        # 先创建所有主要控件
-        self.program_list = QListWidget()
-        self.program_list.setIconSize(QSize(int(32*scale), int(32*scale)))
-        self.program_list.setViewMode(QListWidget.IconMode)
-        self.program_list.setResizeMode(QListWidget.Adjust)
-        self.program_list.setGridSize(QSize(int(90*scale), int(90*scale)))
-        self.program_list.setSpacing(int(12*scale))
-        self.program_list.setMovement(QListWidget.Static)
-        self.program_list.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.program_list.customContextMenuRequested.connect(
-            self.show_context_menu)
+        # 先创建程序显示区域
+        self.program_container = QWidget()
+        self.program_container.setStyleSheet("""
+            QWidget {
+                background-color: rgba(255, 255, 255, 0.9);
+                border: 1px solid #cbd5e0;
+                border-radius: 8px;
+            }
+        """)
+
+        self.program_layout = QVBoxLayout()
+        self.program_scroll_layout = QHBoxLayout()
+        self.program_scroll_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+
+        # 创建一个可滚动的区域来放置应用卡片
+        from PyQt5.QtWidgets import QScrollArea
+        self.program_scroll = QScrollArea()
+        self.program_scroll.setWidgetResizable(True)
+        self.program_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.program_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.program_scroll.setStyleSheet("""
+            QScrollArea {
+                background-color: transparent;
+                border: none;
+            }
+            QScrollBar:vertical {
+                background-color: #f7fafc;
+                width: 10px;
+                border-radius: 5px;
+                margin: 0;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #cbd5e0;
+                border-radius: 5px;
+                min-height: 20px;
+                margin: 1px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #a0aec0;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: none;
+            }
+            QScrollBar:horizontal {
+                background-color: #f7fafc;
+                height: 10px;
+                border-radius: 5px;
+                margin: 0;
+            }
+            QScrollBar::handle:horizontal {
+                background-color: #cbd5e0;
+                border-radius: 5px;
+                min-width: 20px;
+                margin: 1px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background-color: #a0aec0;
+            }
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                width: 0px;
+            }
+            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+                background: none;
+            }
+        """)
+
+        # 创建一个容器来放置所有应用卡片
+        self.program_cards_container = QWidget()
+        self.program_cards_container.setStyleSheet(
+            "background-color: transparent;")
+        self.program_cards_layout = QHBoxLayout()
+        self.program_cards_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.program_cards_layout.setSpacing(int(12*scale))
+        self.program_cards_layout.setContentsMargins(5, 5, 5, 5)
+        self.program_cards_container.setLayout(self.program_cards_layout)
+
+        self.program_scroll.setWidget(self.program_cards_container)
+        self.program_layout.addWidget(self.program_scroll)
+        self.program_container.setLayout(self.program_layout)
         # 先创建所有按钮
         btn_font = QFont()
         btn_font.setPointSize(int(13*scale))
@@ -519,10 +700,7 @@ class SoftwareLauncher(QWidget):
         self.add_group_btn.setFont(btn_font)
         self.add_group_btn.setMinimumHeight(btn_height)
         self.add_group_btn.clicked.connect(self.add_group)
-        self.save_btn = QPushButton("💾 保存组")
-        self.save_btn.setFont(btn_font)
-        self.save_btn.setMinimumHeight(btn_height)
-        self.save_btn.clicked.connect(self.save_group)
+        # 移除保存按钮，现在使用自动保存
         self.launch_btn = QPushButton("🚀 启动当前组")
         self.launch_btn.setFont(btn_font)
         self.launch_btn.setMinimumHeight(btn_height)
@@ -548,7 +726,6 @@ class SoftwareLauncher(QWidget):
             f"font-size: {int(15*scale)}px; font-weight: bold; padding: {int(6*scale)}px 0;")
         app_title_layout.addWidget(app_title_label)
         app_title_layout.addStretch()
-        app_title_layout.addWidget(self.save_btn)
         app_title_layout.addWidget(self.launch_btn)
         app_title_layout.addWidget(self.settings_btn)
 
@@ -559,7 +736,7 @@ class SoftwareLauncher(QWidget):
 
         right_layout = QVBoxLayout()
         right_layout.addLayout(app_title_layout)
-        right_layout.addWidget(self.program_list)
+        right_layout.addWidget(self.program_container)
         right_layout.addWidget(self.status_label)
 
         # 主内容布局
@@ -577,22 +754,108 @@ class SoftwareLauncher(QWidget):
         self.setLayout(main_layout)
         self.refresh_group_list()
 
+    # 移除保存状态管理方法，现在使用自动保存
+
+    def update_group_display(self, group_name):
+        """更新组列表中的显示状态"""
+        # 不再在组名上显示*标记，改为在状态栏显示
+        self.update_status_message()
+
+    def update_status_message(self):
+        """更新状态栏信息"""
+        if not self.current_group:
+            self.status_label.setText("就绪")
+            return
+
+        program_count = len(self.get_current_program_paths())
+        self.status_label.setText(
+            f"📁 已选择组 '{self.current_group}' ({program_count} 个程序)")
+
+    # 旧的get_current_program_paths方法已移动到后面，使用新的卡片布局
+
+    # 移除保存状态检查方法，现在使用自动保存
+
     def refresh_group_list(self):
         self.group_list.clear()
         for group in self.data:
             self.group_list.addItem(group)
+
         if self.data:
             self.group_list.setCurrentRow(0)
             self.on_group_selected(self.group_list.item(0))
 
-    def on_group_selected(self, item):
-        group = item.text()
-        self.current_group = group
-        self.program_list.clear()
-        for path in self.data[group]:
+    def on_group_clicked(self, item):
+        """处理组列表点击事件"""
+        new_group = item.text()
+
+        # 如果点击的是当前组，直接返回
+        if self.current_group == new_group:
+            return
+
+        # 直接切换到新组（现在使用自动保存，不需要检查未保存状态）
+        self.switch_to_group(new_group)
+
+    def switch_to_group(self, group_name):
+        """切换到指定组"""
+        self.current_group = group_name
+        self.clear_program_cards()
+
+        # 重新加载程序列表时不触发修改状态
+        self.loading_group = True
+        for path in self.data[group_name]:
             self.add_program_item(path)
-        self.status_label.setText(
-            f"📁 已选择组 '{group}' ({len(self.data[group])} 个程序)")
+        self.loading_group = False
+
+        self.update_status_message()
+
+    def clear_program_cards(self):
+        """清空程序卡片"""
+        while self.program_cards_layout.count():
+            child = self.program_cards_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+    def get_current_program_paths(self):
+        """获取当前程序列表中的所有路径"""
+        paths = []
+        for i in range(self.program_cards_layout.count()):
+            widget = self.program_cards_layout.itemAt(i).widget()
+            if isinstance(widget, AppCardWidget):
+                paths.append(widget.path)
+        return paths
+
+    def auto_save_current_group(self):
+        """自动保存当前组"""
+        if not self.current_group:
+            return
+
+        paths = self.get_current_program_paths()
+        self.data[self.current_group] = paths
+        save_config(self.data)
+
+        self.update_status_message()
+        print(f"[自动保存] 组 '{self.current_group}' 已保存 ({len(paths)} 个程序)")
+
+    def remove_app_from_current_group(self, app_path):
+        """从当前组中移除应用"""
+        if not self.current_group:
+            return
+
+        # 从布局中移除对应的卡片
+        for i in range(self.program_cards_layout.count()):
+            widget = self.program_cards_layout.itemAt(i).widget()
+            if isinstance(widget, AppCardWidget) and widget.path == app_path:
+                self.program_cards_layout.removeWidget(widget)
+                widget.deleteLater()
+                break
+
+        # 自动保存
+        self.auto_save_current_group()
+
+    def on_group_selected(self, item):
+        """兼容性方法，用于程序初始化时调用"""
+        new_group = item.text()
+        self.switch_to_group(new_group)
 
     def add_group(self):
         name, ok = QInputDialog.getText(self, "新建软件组", "请输入组名：")
@@ -602,6 +865,7 @@ class SoftwareLauncher(QWidget):
                 QMessageBox.warning(self, "警告", "组名已存在")
                 return
             self.data[name] = []
+            save_config(self.data)  # 立即保存新组
             self.refresh_group_list()
 
     def delete_group(self, name=None):
@@ -612,9 +876,9 @@ class SoftwareLauncher(QWidget):
             self, "确认", f"确定要删除组 '{group}'？", QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
             del self.data[group]
+            save_config(self.data)  # 立即保存
             self.refresh_group_list()
-            self.program_list.clear()
-            save_config(self.data)
+            self.clear_program_cards()
 
     def rename_group(self, item):
         old_name = item.text()
@@ -623,7 +887,10 @@ class SoftwareLauncher(QWidget):
         if ok and new_name.strip() and new_name != old_name:
             new_name = new_name.strip()
             self.data[new_name] = self.data.pop(old_name)
-            save_config(self.data)
+            # 更新当前组名
+            if self.current_group == old_name:
+                self.current_group = new_name
+            save_config(self.data)  # 立即保存
             self.refresh_group_list()
 
     def launch_group(self, name):
@@ -645,9 +912,10 @@ class SoftwareLauncher(QWidget):
         menu = QMenu(self)
 
         if item:
+            group_name = item.text()  # 不再需要移除*标记
             action_launch = QAction("🚀 启动组", self)
             action_launch.triggered.connect(
-                lambda: self.launch_group(item.text()))
+                lambda: self.launch_group(group_name))
             menu.addAction(action_launch)
 
             action_rename = QAction("✏️ 重命名", self)
@@ -658,7 +926,7 @@ class SoftwareLauncher(QWidget):
             action_copy = QAction("📋 复制组", self)
 
             def copy_group():
-                old_name = item.text()
+                old_name = group_name
                 new_name, ok = QInputDialog.getText(
                     self, "复制组", f"请输入新组名（将复制 '{old_name}'）：")
                 if ok and new_name.strip():
@@ -667,7 +935,7 @@ class SoftwareLauncher(QWidget):
                         QMessageBox.warning(self, "警告", "组名已存在")
                         return
                     self.data[new_name] = list(self.data[old_name])  # 深拷贝
-                    save_config(self.data)
+                    save_config(self.data)  # 立即保存
                     self.refresh_group_list()
                     QMessageBox.information(
                         self, "复制成功", f"组 '{old_name}' 已复制为 '{new_name}'")
@@ -676,7 +944,7 @@ class SoftwareLauncher(QWidget):
 
             action_delete = QAction("🗑 删除组", self)
             action_delete.triggered.connect(
-                lambda: self.delete_group(item.text()))
+                lambda: self.delete_group(group_name))
             menu.addAction(action_delete)
         else:
             action_add = QAction("➕ 新建组", self)
@@ -747,25 +1015,17 @@ class SoftwareLauncher(QWidget):
                 icon = QIcon("app.ico") if os.path.exists(
                     "app.ico") else QIcon()
 
-        item = QListWidgetItem(QIcon(icon), name)
-        item.setTextAlignment(Qt.AlignHCenter | Qt.AlignBottom)
-        item.setToolTip(display_path)
-        item.setData(Qt.UserRole, display_path)
-        self.program_list.addItem(item)
-        self.program_list.repaint()  # 强制刷新
-        print(f"[UI] 添加item后刷新 program_list")
-        count = self.program_list.count()
-        self.status_label.setText(f"💾 已添加 {count} 个程序")
+                # 创建应用卡片
+        app_card = AppCardWidget(icon, name, display_path, self)
+        self.program_cards_layout.addWidget(app_card)
 
-    def show_context_menu(self, pos):
-        item = self.program_list.itemAt(pos)
-        if item:
-            reply = QMessageBox.question(
-                self, "删除程序", f"是否删除：\n{item.toolTip()}？", QMessageBox.Yes | QMessageBox.No)
-            if reply == QMessageBox.Yes:
-                self.program_list.takeItem(self.program_list.row(item))
-                count = self.program_list.count()
-                self.status_label.setText(f"🗑️ 已删除程序，剩余 {count} 个")
+        print(f"[UI] 添加应用卡片: {name}")
+
+        # 如果不是加载状态，则自动保存
+        if self.current_group and not self.loading_group:
+            self.auto_save_current_group()
+
+        # 移除旧的右键菜单方法，现在使用卡片上的删除按钮
 
     def save_group(self):
         group = self.current_group
@@ -776,7 +1036,7 @@ class SoftwareLauncher(QWidget):
             Qt.UserRole) for i in range(self.program_list.count())]
         self.data[group] = paths
         save_config(self.data)
-        self.status_label.setText(f"✅ 组 '{group}' 已保存 ({len(paths)} 个程序)")
+
         QMessageBox.information(self, "保存成功", "配置已保存")
 
     def launch_all(self):
@@ -829,6 +1089,8 @@ class SoftwareLauncher(QWidget):
     def tray_icon_message_clicked(self):
         self.show()
 
+        # 移除未保存检查方法，现在使用自动保存
+
     def quit_app(self):
         """退出应用程序"""
         self.tray_icon.hide()
@@ -846,7 +1108,7 @@ class SoftwareLauncher(QWidget):
             )
             event.ignore()
         else:
-            self.quit_app()
+            self.tray_icon.hide()
             event.accept()
 
 

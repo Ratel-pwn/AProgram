@@ -1,0 +1,1 @@
+pyinstaller main.py --onefile --noconsole --icon=app.ico --name=AProgram
