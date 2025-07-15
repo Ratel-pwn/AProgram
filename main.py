@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout, QListWidgetItem, QFileDialog, QInputDialog, QMessageBox, QLabel,
     QMenu, QAction, QSystemTrayIcon, QCheckBox, QDialog, QFormLayout
 )
-from PyQt5.QtGui import QPixmap, QImage, QIcon
+from PyQt5.QtGui import QPixmap, QImage, QIcon, QFont
 from PyQt5.QtCore import Qt, QSize
 
 # 👇 添加快捷方式解析依赖
@@ -138,6 +138,13 @@ def extract_icon_from_exe(path):
     try:
         large, _ = win32gui.ExtractIconEx(path, 0)
         if not large:
+            print(f"[extract_icon_from_exe] 未提取到图标: {path}")
+            icon = QIcon(path)
+            if not icon.isNull():
+                print(f"[extract_icon_from_exe] QIcon直接加载exe成功: {path}")
+                return icon
+            else:
+                print(f"[extract_icon_from_exe] QIcon直接加载exe失败: {path}")
             return QIcon()
         hicon = large[0]
         hdc = win32gui.CreateCompatibleDC(0)
@@ -147,7 +154,6 @@ def extract_icon_from_exe(path):
         win32gui.DrawIconEx(hdc, 0, 0, hicon, size, size,
                             0, 0, win32con.DI_NORMAL)
 
-        # BitmapInfoHeader
         class BITMAPINFOHEADER(ctypes.Structure):
             _fields_ = [
                 ('biSize', ctypes.c_uint32),
@@ -166,15 +172,13 @@ def extract_icon_from_exe(path):
         bmi = BITMAPINFOHEADER()
         bmi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
         bmi.biWidth = size
-        bmi.biHeight = -size  # Top-down
+        bmi.biHeight = -size
         bmi.biPlanes = 1
         bmi.biBitCount = 32
-        bmi.biCompression = 0  # BI_RGB
+        bmi.biCompression = 0
 
         bits = ctypes.create_string_buffer(size * size * 4)
-
-        # GetDIBits 参数修正
-        hbitmap_int = int(hbitmap)  # 强制转换为 int
+        hbitmap_int = int(hbitmap)
         hdc_int = int(hdc)
 
         ctypes.windll.gdi32.GetDIBits(
@@ -184,15 +188,24 @@ def extract_icon_from_exe(path):
             size,
             bits,
             ctypes.byref(bmi),
-            0  # DIB_RGB_COLORS
+            0
         )
 
         image = QImage(bits, size, size, QImage.Format_ARGB32)
         pixmap = QPixmap.fromImage(image)
         win32gui.DestroyIcon(hicon)
-        return QIcon(pixmap)
+        icon = QIcon(pixmap)
+        print(
+            f"[extract_icon_from_exe] 成功提取图标: {path}, isNull={icon.isNull()}, pixmap.isNull={icon.pixmap(32, 32).isNull()}")
+        return icon
     except Exception as e:
-        print(f"[extract_icon_from_exe] 提取失败: {e}")
+        print(f"[extract_icon_from_exe] 提取失败: {e}, 路径: {path}")
+        icon = QIcon(path)
+        if not icon.isNull():
+            print(f"[extract_icon_from_exe] QIcon直接加载exe成功: {path}")
+            return icon
+        else:
+            print(f"[extract_icon_from_exe] QIcon直接加载exe失败: {path}")
         return QIcon()
 
 
@@ -331,9 +344,119 @@ class SettingsDialog(QDialog):
 class SoftwareLauncher(QWidget):
     def __init__(self):
         super().__init__()
+        self.setWindowIcon(QIcon("app.ico"))
         self.setWindowTitle("软件组启动器")
         self.setAcceptDrops(True)
-        self.resize(900, 600)
+        self.resize(1200, 800)
+
+        # 恢复样式表
+        self.setStyleSheet("""
+            QWidget {
+                font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+                font-size: 14px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #f8fafc, stop:1 #e2e8f0);
+            }
+            QListWidget {
+                background-color: rgba(255, 255, 255, 0.9);
+                border: 1px solid #cbd5e0;
+                border-radius: 8px;
+                padding: 8px;
+                selection-background-color: #4299e1;
+                selection-color: white;
+                alternate-background-color: #f7fafc;
+                gridline-color: #e2e8f0;
+                outline: none;
+            }
+            QListWidget::item {
+                background-color: rgba(255, 255, 255, 0.8);
+                border: 1px solid #e2e8f0;
+                border-radius: 6px;
+                margin: 2px;
+                padding: 8px;
+                color: #2d3748;
+            }
+            QListWidget::item:hover {
+                background-color: #edf2f7;
+                border: 1px solid #cbd5e0;
+            }
+            QListWidget::item:selected {
+                background-color: #4299e1;
+                color: white;
+                border: 1px solid #3182ce;
+                font-weight: bold;
+            }
+            QPushButton {
+                background-color: #4299e1;
+                color: white;
+                border: none;
+                padding: 10px 16px;
+                border-radius: 6px;
+                font-weight: bold;
+                font-size: 13px;
+                min-height: 18px;
+            }
+            QPushButton:hover {
+                background-color: #3182ce;
+            }
+            QPushButton:pressed {
+                background-color: #2b6cb0;
+            }
+            QPushButton:disabled {
+                background-color: #a0aec0;
+                color: #718096;
+            }
+            QLabel {
+                color: #2d3748;
+                font-weight: bold;
+                font-size: 15px;
+                padding: 6px 0;
+            }
+            QMenu {
+                background-color: rgba(255, 255, 255, 0.95);
+                border: 1px solid #cbd5e0;
+                border-radius: 6px;
+                padding: 4px;
+                color: #2d3748;
+                font-weight: 500;
+            }
+            QMenu::item {
+                background-color: transparent;
+                border-radius: 4px;
+                padding: 6px 12px;
+                margin: 1px;
+            }
+            QMenu::item:selected {
+                background-color: #edf2f7;
+                color: #2d3748;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #e2e8f0;
+                margin: 4px 0;
+            }
+            QScrollBar:vertical {
+                background-color: #f7fafc;
+                width: 10px;
+                border-radius: 5px;
+                margin: 0;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #cbd5e0;
+                border-radius: 5px;
+                min-height: 20px;
+                margin: 1px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #a0aec0;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: none;
+            }
+        """)
 
         # 移除无边框设计，使用标准窗口
         # self.setWindowFlags(Qt.FramelessWindowHint)
@@ -359,132 +482,12 @@ class SoftwareLauncher(QWidget):
         # 初始化系统托盘
         self.setup_system_tray()
 
-        # 样式表（现代化 UI）
-        self.setStyleSheet("""
-            QWidget {
-                font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
-                font-size: 14px;
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #f8fafc, stop:1 #e2e8f0);
-            }
-            
-            QListWidget {
-                background-color: rgba(255, 255, 255, 0.9);
-                border: 1px solid #cbd5e0;
-                border-radius: 8px;
-                padding: 8px;
-                selection-background-color: #4299e1;
-                selection-color: white;
-                alternate-background-color: #f7fafc;
-                gridline-color: #e2e8f0;
-                outline: none;
-            }
-            
-            QListWidget::item {
-                background-color: rgba(255, 255, 255, 0.8);
-                border: 1px solid #e2e8f0;
-                border-radius: 6px;
-                margin: 2px;
-                padding: 8px;
-                color: #2d3748;
-            }
-            
-            QListWidget::item:hover {
-                background-color: #edf2f7;
-                border: 1px solid #cbd5e0;
-            }
-            
-            QListWidget::item:selected {
-                background-color: #4299e1;
-                color: white;
-                border: 1px solid #3182ce;
-                font-weight: bold;
-            }
-            
-            QPushButton {
-                background-color: #4299e1;
-                color: white;
-                border: none;
-                padding: 10px 16px;
-                border-radius: 6px;
-                font-weight: bold;
-                font-size: 13px;
-                min-height: 18px;
-            }
-            
-            QPushButton:hover {
-                background-color: #3182ce;
-            }
-            
-            QPushButton:pressed {
-                background-color: #2b6cb0;
-            }
-            
-            QPushButton:disabled {
-                background-color: #a0aec0;
-                color: #718096;
-            }
-            
-            QLabel {
-                color: #2d3748;
-                font-weight: bold;
-                font-size: 15px;
-                padding: 6px 0;
-            }
-            
-            QMenu {
-                background-color: rgba(255, 255, 255, 0.95);
-                border: 1px solid #cbd5e0;
-                border-radius: 6px;
-                padding: 4px;
-                color: #2d3748;
-                font-weight: 500;
-            }
-            
-            QMenu::item {
-                background-color: transparent;
-                border-radius: 4px;
-                padding: 6px 12px;
-                margin: 1px;
-            }
-            
-            QMenu::item:selected {
-                background-color: #edf2f7;
-                color: #2d3748;
-            }
-            
-            QMenu::separator {
-                height: 1px;
-                background-color: #e2e8f0;
-                margin: 4px 0;
-            }
-            
-            QScrollBar:vertical {
-                background-color: #f7fafc;
-                width: 10px;
-                border-radius: 5px;
-                margin: 0;
-            }
-            
-            QScrollBar::handle:vertical {
-                background-color: #cbd5e0;
-                border-radius: 5px;
-                min-height: 20px;
-                margin: 1px;
-            }
-            
-            QScrollBar::handle:vertical:hover {
-                background-color: #a0aec0;
-            }
-            
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                background: none;
-            }
-        """)
+        # 注释掉所有 setStyleSheet 相关代码
+        # self.setStyleSheet("")
+        # print("[UI] 主窗口样式表已注释")
+
+        # 放大因子
+        scale = 1.666  # 2/3 增大
 
         # 左侧：组列表
         self.group_list = QListWidget()
@@ -492,77 +495,72 @@ class SoftwareLauncher(QWidget):
         self.group_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.group_list.customContextMenuRequested.connect(
             self.show_group_context_menu)
-
-        # 右侧：程序列表
+        # 先创建状态栏
+        self.status_label = QLabel("就绪")
+        self.status_label.setStyleSheet(
+            f"color: #4a5568; font-size: {int(12*scale)}px; padding: {int(5*scale)}px {int(10*scale)}px; background: rgba(255,255,255,0.8); border-radius: {int(4*scale)}px; border: 1px solid #e2e8f0;")
+        self.status_label.setAlignment(Qt.AlignCenter)
+        # 先创建所有主要控件
         self.program_list = QListWidget()
-        self.program_list.setIconSize(QSize(32, 32))
+        self.program_list.setIconSize(QSize(int(32*scale), int(32*scale)))
+        self.program_list.setViewMode(QListWidget.IconMode)
+        self.program_list.setResizeMode(QListWidget.Adjust)
+        self.program_list.setGridSize(QSize(int(90*scale), int(90*scale)))
+        self.program_list.setSpacing(int(12*scale))
+        self.program_list.setMovement(QListWidget.Static)
         self.program_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.program_list.customContextMenuRequested.connect(
             self.show_context_menu)
-
-        # 按钮区域
+        # 先创建所有按钮
+        btn_font = QFont()
+        btn_font.setPointSize(int(13*scale))
+        btn_height = int(36*scale)
         self.add_group_btn = QPushButton("➕ 新建组")
+        self.add_group_btn.setFont(btn_font)
+        self.add_group_btn.setMinimumHeight(btn_height)
         self.add_group_btn.clicked.connect(self.add_group)
-
         self.save_btn = QPushButton("💾 保存组")
+        self.save_btn.setFont(btn_font)
+        self.save_btn.setMinimumHeight(btn_height)
         self.save_btn.clicked.connect(self.save_group)
-
         self.launch_btn = QPushButton("🚀 启动当前组")
+        self.launch_btn.setFont(btn_font)
+        self.launch_btn.setMinimumHeight(btn_height)
         self.launch_btn.clicked.connect(self.launch_all)
-
-        # 设置按钮
         self.settings_btn = QPushButton("⚙️ 设置")
+        self.settings_btn.setFont(btn_font)
+        self.settings_btn.setMinimumHeight(btn_height)
         self.settings_btn.clicked.connect(self.show_settings)
 
-        # 状态栏
-        self.status_label = QLabel("就绪")
-        self.status_label.setStyleSheet("""
-            QLabel {
-                color: #4a5568;
-                font-size: 12px;
-                padding: 5px 10px;
-                background: rgba(255, 255, 255, 0.8);
-                border-radius: 4px;
-                border: 1px solid #e2e8f0;
-            }
-        """)
-        self.status_label.setAlignment(Qt.AlignCenter)
+        # 左侧：组区标题和按钮同一行
+        group_title_layout = QHBoxLayout()
+        group_title_label = QLabel("📁 软件组")
+        group_title_label.setStyleSheet(
+            f"font-size: {int(15*scale)}px; font-weight: bold; padding: {int(6*scale)}px 0;")
+        group_title_layout.addWidget(group_title_label)
+        group_title_layout.addStretch()
+        group_title_layout.addWidget(self.add_group_btn)
+
+        # 右侧：应用区标题和按钮同一行
+        app_title_layout = QHBoxLayout()
+        app_title_label = QLabel("📱 拖入 EXE 或快捷方式：")
+        app_title_label.setStyleSheet(
+            f"font-size: {int(15*scale)}px; font-weight: bold; padding: {int(6*scale)}px 0;")
+        app_title_layout.addWidget(app_title_label)
+        app_title_layout.addStretch()
+        app_title_layout.addWidget(self.save_btn)
+        app_title_layout.addWidget(self.launch_btn)
+        app_title_layout.addWidget(self.settings_btn)
 
         # 左右布局
         left_layout = QVBoxLayout()
-        left_layout.addWidget(QLabel("📁 软件组"))
+        left_layout.addLayout(group_title_layout)
         left_layout.addWidget(self.group_list)
-        left_layout.addWidget(self.add_group_btn)
 
         right_layout = QVBoxLayout()
-        right_layout.addWidget(QLabel("📱 拖入 EXE 或快捷方式："))
+        right_layout.addLayout(app_title_layout)
         right_layout.addWidget(self.program_list)
-        right_layout.addWidget(self.save_btn)
-        right_layout.addWidget(self.launch_btn)
-        right_layout.addWidget(self.settings_btn)
         right_layout.addWidget(self.status_label)
-
-        # 创建标题栏
-        title_bar = QWidget()
-        title_bar.setFixedHeight(40)
-        title_bar.setStyleSheet("""
-            QWidget {
-                background: transparent;
-                color: #2d3748;
-                font-weight: bold;
-                font-size: 16px;
-            }
-        """)
-
-        title_layout = QHBoxLayout(title_bar)
-        title_layout.setContentsMargins(20, 0, 20, 0)
-
-        title_label = QLabel("🚀 软件组启动器")
-        title_label.setStyleSheet(
-            "font-size: 18px; font-weight: bold; color: #2d3748;")
-
-        title_layout.addWidget(title_label)
-        title_layout.addStretch()
 
         # 主内容布局
         content_layout = QHBoxLayout()
@@ -574,7 +572,6 @@ class SoftwareLauncher(QWidget):
         # 设置主布局
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.addWidget(title_bar)
         main_layout.addLayout(content_layout)
 
         self.setLayout(main_layout)
@@ -657,6 +654,26 @@ class SoftwareLauncher(QWidget):
             action_rename.triggered.connect(lambda: self.rename_group(item))
             menu.addAction(action_rename)
 
+            # 复制组功能
+            action_copy = QAction("📋 复制组", self)
+
+            def copy_group():
+                old_name = item.text()
+                new_name, ok = QInputDialog.getText(
+                    self, "复制组", f"请输入新组名（将复制 '{old_name}'）：")
+                if ok and new_name.strip():
+                    new_name = new_name.strip()
+                    if new_name in self.data:
+                        QMessageBox.warning(self, "警告", "组名已存在")
+                        return
+                    self.data[new_name] = list(self.data[old_name])  # 深拷贝
+                    save_config(self.data)
+                    self.refresh_group_list()
+                    QMessageBox.information(
+                        self, "复制成功", f"组 '{old_name}' 已复制为 '{new_name}'")
+            action_copy.triggered.connect(copy_group)
+            menu.addAction(action_copy)
+
             action_delete = QAction("🗑 删除组", self)
             action_delete.triggered.connect(
                 lambda: self.delete_group(item.text()))
@@ -682,27 +699,61 @@ class SoftwareLauncher(QWidget):
                 self.add_program_item(path)
 
     def add_program_item(self, path):
-        name = os.path.basename(path)
+        # 应用名：.lnk用快捷方式名，exe用文件名
+        if path.endswith('.lnk'):
+            name = os.path.splitext(os.path.basename(path))[0]
+        else:
+            name = os.path.basename(path)
         display_path = path
         icon = QIcon()
+        default_icon = QIcon("app.ico") if os.path.exists(
+            "app.ico") else QIcon()
+        feishu_icon_path = r"D:/SoftWare/Feishu/icon.ico"
+        feishu_icon = QIcon(feishu_icon_path) if os.path.exists(
+            feishu_icon_path) else None
 
         if path.endswith(".lnk"):
             resolved_path = resolve_lnk(path)
-            icon_path = get_icon_from_lnk(path) or resolved_path
-
-            if os.path.exists(resolved_path):
-                name = os.path.splitext(os.path.basename(resolved_path))[0]
+            icon_path = get_icon_from_lnk(path)
             if icon_path and os.path.exists(icon_path):
-                icon = extract_icon_from_exe(icon_path)
+                if icon_path.lower().endswith('.ico'):
+                    icon = QIcon(icon_path)
+                    print(
+                        f"[图标] 使用.lnk的IconLocation(ico): {icon_path}, isNull={icon.isNull()}, pixmap.isNull={icon.pixmap(32, 32).isNull()}")
+                else:
+                    icon = extract_icon_from_exe(icon_path)
+                    print(
+                        f"[图标] 使用.lnk的IconLocation(exe/dll): {icon_path}, isNull={icon.isNull()}, pixmap.isNull={icon.pixmap(32, 32).isNull()}")
+            elif resolved_path and os.path.exists(resolved_path) and resolved_path.lower().endswith('.exe'):
+                icon = extract_icon_from_exe(resolved_path)
+                print(
+                    f"[图标] 使用.lnk目标exe: {resolved_path}, isNull={icon.isNull()}, pixmap.isNull={icon.pixmap(32, 32).isNull()}")
+            else:
+                print(
+                    f"[图标] .lnk无有效图标，路径: {path}，目标: {resolved_path}，IconLocation: {icon_path}")
+            # 不再覆盖name，始终用.lnk文件名
         elif os.path.exists(path):
             icon = extract_icon_from_exe(path)
 
-        item = QListWidgetItem(icon, name)
+        if icon.isNull() or icon.pixmap(32, 32).isNull():
+            print(
+                f"[图标] icon无效，尝试QIcon({path})兜底: isNull={icon.isNull()}, pixmap.isNull={icon.pixmap(32, 32).isNull()}")
+            fallback_icon = QIcon(path)
+            if not fallback_icon.isNull() and not fallback_icon.pixmap(32, 32).isNull():
+                icon = QIcon(path)
+                print(f"[图标] QIcon({path})兜底成功")
+            else:
+                print(f"[图标] QIcon({path})兜底失败，使用默认图标app.ico")
+                icon = QIcon("app.ico") if os.path.exists(
+                    "app.ico") else QIcon()
+
+        item = QListWidgetItem(QIcon(icon), name)
+        item.setTextAlignment(Qt.AlignHCenter | Qt.AlignBottom)
         item.setToolTip(display_path)
         item.setData(Qt.UserRole, display_path)
         self.program_list.addItem(item)
-
-        # 更新状态
+        self.program_list.repaint()  # 强制刷新
+        print(f"[UI] 添加item后刷新 program_list")
         count = self.program_list.count()
         self.status_label.setText(f"💾 已添加 {count} 个程序")
 
