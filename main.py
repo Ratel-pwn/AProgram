@@ -232,10 +232,11 @@ def resolve_lnk(path):
 
 
 class AppCardWidget(QFrame):
-    def __init__(self, icon, name, path, parent_launcher):
+    def __init__(self, icon, name, path, parent_launcher, enabled=True):
         super().__init__()
         self.path = path
         self.parent_launcher = parent_launcher
+        self.enabled = enabled
 
         # 设置固定大小，与原来的程序列表项保持一致
         scale = 1.666
@@ -259,17 +260,43 @@ class AppCardWidget(QFrame):
                 background: transparent;
                 border: none;
             }
+            QCheckBox {
+                background: transparent;
+                border: none;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border: 2px solid #cbd5e0;
+                border-radius: 3px;
+                background-color: white;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #4299e1;
+                border-color: #4299e1;
+                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iOSIgdmlld0JveD0iMCAwIDEyIDkiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xIDQuNUw0LjUgOEwxMSAxIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K);
+            }
         """)
 
         # 使用绝对定位，让删除按钮不占用布局空间
-        # 创建主布局（只包含图标和名称）
+        # 创建主布局（包含勾选框、图标和名称）
         layout = QVBoxLayout()
         layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
+
+        # 勾选框区域
+        self.checkbox = QCheckBox()
+        self.checkbox.setChecked(self.enabled)
+        self.checkbox.stateChanged.connect(self.on_checkbox_changed)
+        checkbox_layout = QHBoxLayout()
+        checkbox_layout.addStretch()
+        checkbox_layout.addWidget(self.checkbox)
+        checkbox_layout.addStretch()
+        layout.addLayout(checkbox_layout)
 
         # 图标区域
         icon_label = QLabel()
-        icon_label.setPixmap(icon.pixmap(int(32*scale), int(32*scale)))
+        icon_label.setPixmap(icon.pixmap(int(28*scale), int(28*scale)))
         icon_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(icon_label)
 
@@ -277,7 +304,7 @@ class AppCardWidget(QFrame):
         name_label = QLabel(name)
         name_label.setAlignment(Qt.AlignCenter)
         name_label.setWordWrap(True)
-        name_label.setMaximumHeight(int(24*scale))
+        name_label.setMaximumHeight(int(20*scale))
         layout.addWidget(name_label)
 
         self.setLayout(layout)
@@ -324,6 +351,13 @@ class AppCardWidget(QFrame):
         """鼠标离开事件"""
         self.delete_btn.hide()
         super().leaveEvent(event)
+
+    def on_checkbox_changed(self, state):
+        """勾选框状态改变"""
+        self.enabled = (state == Qt.Checked)
+        # 通知父窗口保存状态
+        if hasattr(self.parent_launcher, 'auto_save_current_group'):
+            self.parent_launcher.auto_save_current_group()
 
     def delete_app(self):
         """删除应用"""
@@ -783,9 +817,11 @@ class SoftwareLauncher(QWidget):
             self.status_label.setText("就绪")
             return
 
-        program_count = len(self.get_current_program_paths())
+        programs = self.get_current_program_paths()
+        enabled_count = sum(1 for p in programs if p['enabled'])
+        total_count = len(programs)
         self.status_label.setText(
-            f"📁 已选择组 '{self.current_group}' ({program_count} 个程序)")
+            f"📁 已选择组 '{self.current_group}' ({enabled_count}/{total_count} 个程序已启用)")
 
     # 旧的get_current_program_paths方法已移动到后面，使用新的卡片布局
 
@@ -818,10 +854,24 @@ class SoftwareLauncher(QWidget):
 
         # 重新加载程序列表时不触发修改状态
         self.loading_group = True
-        for path in self.data[group_name]:
-            self.add_program_item(path)
+        group_data = self.data[group_name]
+        
+        # 兼容旧格式（纯路径列表）和新格式（包含enabled状态的字典列表）
+        if group_data:
+            if isinstance(group_data[0], str):
+                # 旧格式：转换为新格式，默认全部启用
+                for path in group_data:
+                    self.add_program_item(path, enabled=True)
+            else:
+                # 新格式
+                for item in group_data:
+                    if isinstance(item, dict):
+                        self.add_program_item(item['path'], enabled=item.get('enabled', True))
+                    else:
+                        # 兼容混合格式
+                        self.add_program_item(item, enabled=True)
+        
         self.loading_group = False
-
         self.update_status_message()
 
     def clear_program_cards(self):
@@ -832,25 +882,28 @@ class SoftwareLauncher(QWidget):
                 child.widget().deleteLater()
 
     def get_current_program_paths(self):
-        """获取当前程序列表中的所有路径"""
-        paths = []
+        """获取当前程序列表中的所有路径和启用状态"""
+        programs = []
         for i in range(self.program_cards_layout.count()):
             widget = self.program_cards_layout.itemAt(i).widget()
             if isinstance(widget, AppCardWidget):
-                paths.append(widget.path)
-        return paths
+                programs.append({
+                    'path': widget.path,
+                    'enabled': widget.enabled
+                })
+        return programs
 
     def auto_save_current_group(self):
         """自动保存当前组"""
         if not self.current_group:
             return
 
-        paths = self.get_current_program_paths()
-        self.data[self.current_group] = paths
+        programs = self.get_current_program_paths()
+        self.data[self.current_group] = programs
         save_config(self.data)
 
         self.update_status_message()
-        print(f"[自动保存] 组 '{self.current_group}' 已保存 ({len(paths)} 个程序)")
+        print(f"[自动保存] 组 '{self.current_group}' 已保存 ({len(programs)} 个程序)")
 
     def remove_app_from_current_group(self, app_path):
         """从当前组中移除应用"""
@@ -914,14 +967,28 @@ class SoftwareLauncher(QWidget):
             self.status_label.setText("❌ 请先选择一个组")
             return
         launched_count = 0
-        for path in self.data[name]:
-            try:
-                subprocess.Popen(path, shell=True)
-                launched_count += 1
-            except Exception as e:
-                QMessageBox.warning(self, "启动失败", f"{path}\n{str(e)}")
+        total_enabled = 0
+        group_data = self.data[name]
+        
+        for item in group_data:
+            # 兼容旧格式和新格式
+            if isinstance(item, str):
+                path = item
+                enabled = True  # 旧格式默认启用
+            else:
+                path = item['path']
+                enabled = item.get('enabled', True)
+            
+            if enabled:
+                total_enabled += 1
+                try:
+                    subprocess.Popen(path, shell=True)
+                    launched_count += 1
+                except Exception as e:
+                    QMessageBox.warning(self, "启动失败", f"{path}\n{str(e)}")
+        
         self.status_label.setText(
-            f"🚀 已启动 {launched_count}/{len(self.data[name])} 个程序")
+            f"🚀 已启动 {launched_count}/{total_enabled} 个已启用程序")
 
     def show_group_context_menu(self, pos):
         item = self.group_list.itemAt(pos)
@@ -950,11 +1017,17 @@ class SoftwareLauncher(QWidget):
                     if new_name in self.data:
                         QMessageBox.warning(self, "警告", "组名已存在")
                         return
-                    self.data[new_name] = list(self.data[old_name])  # 深拷贝
+                    # 深拷贝，保持数据格式
+                    import copy
+                    self.data[new_name] = copy.deepcopy(self.data[old_name])
+                    # 复制时默认全部勾选
+                    for item in self.data[new_name]:
+                        if isinstance(item, dict):
+                            item['enabled'] = True
                     save_config(self.data)  # 立即保存
                     self.refresh_group_list()
                     QMessageBox.information(
-                        self, "复制成功", f"组 '{old_name}' 已复制为 '{new_name}'")
+                        self, "复制成功", f"组 '{old_name}' 已复制为 '{new_name}'（默认全部勾选）")
             action_copy.triggered.connect(copy_group)
             menu.addAction(action_copy)
 
@@ -982,7 +1055,7 @@ class SoftwareLauncher(QWidget):
             if os.path.isfile(path) and (path.endswith(".exe") or path.endswith(".lnk")):
                 self.add_program_item(path)
 
-    def add_program_item(self, path):
+    def add_program_item(self, path, enabled=True):
         # 应用名：.lnk用快捷方式名，exe用文件名
         if path.endswith('.lnk'):
             name = os.path.splitext(os.path.basename(path))[0]
@@ -1032,10 +1105,10 @@ class SoftwareLauncher(QWidget):
                     "app.ico") else QIcon()
 
                 # 创建应用卡片
-        app_card = AppCardWidget(icon, name, display_path, self)
+        app_card = AppCardWidget(icon, name, display_path, self, enabled)
         self.program_cards_layout.addWidget(app_card)
 
-        print(f"[UI] 添加应用卡片: {name}")
+        print(f"[UI] 添加应用卡片: {name} (启用: {enabled})")
 
         # 如果不是加载状态，则自动保存
         if self.current_group and not self.loading_group:
