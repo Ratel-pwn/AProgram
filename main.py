@@ -242,61 +242,17 @@ class AppCardWidget(QFrame):
         scale = 1.666
         self.setFixedSize(int(90*scale), int(90*scale))
 
-        # 设置样式，简化样式避免双层效果
-        self.setStyleSheet("""
-            AppCardWidget {
-                background-color: transparent;
-                border: none;
-                margin: 4px;
-                padding: 8px;
-            }
-            AppCardWidget:hover {
-                background-color: rgba(237, 242, 247, 0.6);
-                border-radius: 6px;
-            }
-            QLabel {
-                color: #2d3748;
-                font-size: 12px;
-                background: transparent;
-                border: none;
-            }
-            QCheckBox {
-                background: transparent;
-                border: none;
-            }
-            QCheckBox::indicator {
-                width: 16px;
-                height: 16px;
-                border: 2px solid #cbd5e0;
-                border-radius: 3px;
-                background-color: white;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #4299e1;
-                border-color: #4299e1;
-                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iOSIgdmlld0JveD0iMCAwIDEyIDkiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xIDQuNUw0LjUgOEwxMSAxIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K);
-            }
-        """)
+        # 更新样式表，移除复选框样式，添加选中状态的背景色
+        self.update_style()
 
-        # 使用绝对定位，让删除按钮不占用布局空间
-        # 创建主布局（包含勾选框、图标和名称）
+        # 创建主布局（移除勾选框，只包含图标和名称）
         layout = QVBoxLayout()
         layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(4)
-
-        # 勾选框区域
-        self.checkbox = QCheckBox()
-        self.checkbox.setChecked(self.enabled)
-        self.checkbox.stateChanged.connect(self.on_checkbox_changed)
-        checkbox_layout = QHBoxLayout()
-        checkbox_layout.addStretch()
-        checkbox_layout.addWidget(self.checkbox)
-        checkbox_layout.addStretch()
-        layout.addLayout(checkbox_layout)
+        layout.setSpacing(8)
 
         # 图标区域
         icon_label = QLabel()
-        icon_label.setPixmap(icon.pixmap(int(28*scale), int(28*scale)))
+        icon_label.setPixmap(icon.pixmap(int(32*scale), int(32*scale)))
         icon_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(icon_label)
 
@@ -304,7 +260,7 @@ class AppCardWidget(QFrame):
         name_label = QLabel(name)
         name_label.setAlignment(Qt.AlignCenter)
         name_label.setWordWrap(True)
-        name_label.setMaximumHeight(int(20*scale))
+        name_label.setMaximumHeight(int(24*scale))
         layout.addWidget(name_label)
 
         self.setLayout(layout)
@@ -334,8 +290,67 @@ class AppCardWidget(QFrame):
         # 将删除按钮定位到右上角
         self.delete_btn.move(self.width() - 22, 2)
 
-        # 双击启动应用
+        # 单击切换选中状态，双击启动应用
+        self.mousePressEvent = self.on_mouse_press
         self.mouseDoubleClickEvent = self.launch_app
+
+    def update_style(self):
+        """更新样式表，根据选中状态设置背景色"""
+        if self.enabled:
+            # 选中状态：蓝色背景
+            self.setStyleSheet("""
+                AppCardWidget {
+                    background-color: rgba(66, 153, 225, 0.4);
+                    border: 2px solid #4299e1;
+                    border-radius: 8px;
+                    margin: 4px;
+                    padding: 8px;
+                }
+                AppCardWidget:hover {
+                    background-color: rgba(66, 153, 225, 0.9);
+                    border: 2px solid #3182ce;
+                }
+                QLabel {
+                    color: white;
+                    font-size: 12px;
+                    font-weight: bold;
+                    background: transparent;
+                    border: none;
+                }
+            """)
+        else:
+            # 未选中状态：透明背景
+            self.setStyleSheet("""
+                AppCardWidget {
+                    background-color: transparent;
+                    border: 2px solid #e2e8f0;
+                    border-radius: 8px;
+                    margin: 4px;
+                    padding: 8px;
+                    opacity: 0.6;
+                }
+                AppCardWidget:hover {
+                    background-color: rgba(237, 242, 247, 0.6);
+                    border: 2px solid #cbd5e0;
+                    opacity: 0.8;
+                }
+                QLabel {
+                    color: #718096;
+                    font-size: 12px;
+                    background: transparent;
+                    border: none;
+                }
+            """)
+
+    def on_mouse_press(self, event):
+        """处理鼠标单击事件，切换选中状态"""
+        if event.button() == Qt.LeftButton:
+            # 切换选中状态
+            self.enabled = not self.enabled
+            self.update_style()
+            # 通知父窗口保存状态
+            if hasattr(self.parent_launcher, 'auto_save_current_group'):
+                self.parent_launcher.auto_save_current_group()
 
     def resizeEvent(self, event):
         """窗口大小改变时重新定位删除按钮"""
@@ -351,13 +366,6 @@ class AppCardWidget(QFrame):
         """鼠标离开事件"""
         self.delete_btn.hide()
         super().leaveEvent(event)
-
-    def on_checkbox_changed(self, state):
-        """勾选框状态改变"""
-        self.enabled = (state == Qt.Checked)
-        # 通知父窗口保存状态
-        if hasattr(self.parent_launcher, 'auto_save_current_group'):
-            self.parent_launcher.auto_save_current_group()
 
     def delete_app(self):
         """删除应用"""
@@ -855,7 +863,7 @@ class SoftwareLauncher(QWidget):
         # 重新加载程序列表时不触发修改状态
         self.loading_group = True
         group_data = self.data[group_name]
-        
+
         # 兼容旧格式（纯路径列表）和新格式（包含enabled状态的字典列表）
         if group_data:
             if isinstance(group_data[0], str):
@@ -866,11 +874,12 @@ class SoftwareLauncher(QWidget):
                 # 新格式
                 for item in group_data:
                     if isinstance(item, dict):
-                        self.add_program_item(item['path'], enabled=item.get('enabled', True))
+                        self.add_program_item(
+                            item['path'], enabled=item.get('enabled', True))
                     else:
                         # 兼容混合格式
                         self.add_program_item(item, enabled=True)
-        
+
         self.loading_group = False
         self.update_status_message()
 
@@ -969,7 +978,7 @@ class SoftwareLauncher(QWidget):
         launched_count = 0
         total_enabled = 0
         group_data = self.data[name]
-        
+
         for item in group_data:
             # 兼容旧格式和新格式
             if isinstance(item, str):
@@ -978,7 +987,7 @@ class SoftwareLauncher(QWidget):
             else:
                 path = item['path']
                 enabled = item.get('enabled', True)
-            
+
             if enabled:
                 total_enabled += 1
                 try:
@@ -986,7 +995,7 @@ class SoftwareLauncher(QWidget):
                     launched_count += 1
                 except Exception as e:
                     QMessageBox.warning(self, "启动失败", f"{path}\n{str(e)}")
-        
+
         self.status_label.setText(
             f"🚀 已启动 {launched_count}/{total_enabled} 个已启用程序")
 
