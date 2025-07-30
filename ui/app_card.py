@@ -25,9 +25,12 @@ class AppCardWidget(QFrame):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        # 图标区域
+        # 图标区域 - 使用圆角图标
+        from utils.icon_utils import create_rounded_icon
+        rounded_icon = create_rounded_icon(icon, ICON_SIZE, radius=8)
+
         icon_label = QLabel()
-        icon_label.setPixmap(icon.pixmap(ICON_SIZE, ICON_SIZE))
+        icon_label.setPixmap(rounded_icon.pixmap(ICON_SIZE, ICON_SIZE))
         icon_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(icon_label)
 
