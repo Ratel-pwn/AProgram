@@ -22,6 +22,7 @@ import ctypes
 import ctypes.wintypes as wintypes
 from PIL import Image
 import tempfile
+import psutil  # 用于进程管理
 
 CONFIG_FILE = "software_groups.json"
 SETTINGS_FILE = "settings.json"
@@ -763,6 +764,32 @@ class SoftwareLauncher(QWidget):
         self.launch_btn.setFont(btn_font)
         self.launch_btn.setMinimumHeight(btn_height)
         self.launch_btn.clicked.connect(self.launch_all)
+        self.close_btn = QPushButton("🛑 关闭当前组")
+        self.close_btn.setFont(btn_font)
+        self.close_btn.setMinimumHeight(btn_height)
+        self.close_btn.clicked.connect(self.close_all)
+        self.close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e53e3e;
+                color: white;
+                border: none;
+                padding: 10px 16px;
+                border-radius: 6px;
+                font-weight: bold;
+                font-size: 13px;
+                min-height: 18px;
+            }
+            QPushButton:hover {
+                background-color: #c53030;
+            }
+            QPushButton:pressed {
+                background-color: #9c2c2c;
+            }
+            QPushButton:disabled {
+                background-color: #a0aec0;
+                color: #718096;
+            }
+        """)
         self.settings_btn = QPushButton("⚙️ 设置")
         self.settings_btn.setFont(btn_font)
         self.settings_btn.setMinimumHeight(btn_height)
@@ -785,6 +812,7 @@ class SoftwareLauncher(QWidget):
         app_title_layout.addWidget(app_title_label)
         app_title_layout.addStretch()
         app_title_layout.addWidget(self.launch_btn)
+        app_title_layout.addWidget(self.close_btn)
         app_title_layout.addWidget(self.settings_btn)
 
         # 左右布局
@@ -1139,6 +1167,113 @@ class SoftwareLauncher(QWidget):
 
     def launch_all(self):
         self.launch_group(self.current_group)
+
+    def close_all(self):
+        """关闭当前组中选中的应用"""
+        self.close_group(self.current_group)
+
+    def close_group(self, name):
+        """关闭指定组中选中的应用"""
+        if not name or name not in self.data:
+            self.status_label.setText("❌ 请先选择一个组")
+            return
+        
+        # 确认对话框
+        reply = QMessageBox.question(
+            self, "确认关闭", 
+            f"确定要关闭组 '{name}' 中所有选中的应用吗？\n\n这将强制关闭正在运行的程序，请确保已保存重要文件。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply != QMessageBox.Yes:
+            return
+        
+        closed_count = 0
+        total_enabled = 0
+        group_data = self.data[name]
+        
+        for item in group_data:
+            # 兼容旧格式和新格式
+            if isinstance(item, str):
+                path = item
+                enabled = True  # 旧格式默认启用
+            else:
+                path = item['path']
+                enabled = item.get('enabled', True)
+            
+            if enabled:
+                total_enabled += 1
+                try:
+                    if self.close_application_by_path(path):
+                        closed_count += 1
+                except Exception as e:
+                    print(f"[关闭失败] {path}: {str(e)}")
+        
+        self.status_label.setText(
+            f"🛑 已尝试关闭 {closed_count}/{total_enabled} 个已启用程序")
+
+    def close_application_by_path(self, app_path):
+        """根据应用路径关闭对应的进程"""
+        try:
+            # 处理快捷方式
+            if app_path.endswith('.lnk'):
+                target_path = resolve_lnk(app_path)
+                if target_path and os.path.exists(target_path):
+                    app_path = target_path
+            
+            # 获取应用的可执行文件名
+            app_name = os.path.basename(app_path).lower()
+            
+            closed_processes = []
+            
+            # 遍历所有进程
+            for proc in psutil.process_iter(['pid', 'name', 'exe']):
+                try:
+                    proc_info = proc.info
+                    
+                    # 检查进程名是否匹配
+                    if proc_info['name'] and proc_info['name'].lower() == app_name:
+                        proc.terminate()  # 先尝试优雅关闭
+                        closed_processes.append(proc_info['name'])
+                        continue
+                    
+                    # 检查完整路径是否匹配
+                    if proc_info['exe'] and os.path.normpath(proc_info['exe'].lower()) == os.path.normpath(app_path.lower()):
+                        proc.terminate()  # 先尝试优雅关闭
+                        closed_processes.append(proc_info['name'])
+                        continue
+                        
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    continue
+            
+            # 等待一下，然后强制关闭还在运行的进程
+            if closed_processes:
+                import time
+                time.sleep(1)
+                
+                for proc in psutil.process_iter(['pid', 'name', 'exe']):
+                    try:
+                        proc_info = proc.info
+                        
+                        # 检查是否还有相关进程在运行
+                        if (proc_info['name'] and proc_info['name'].lower() == app_name) or \
+                           (proc_info['exe'] and os.path.normpath(proc_info['exe'].lower()) == os.path.normpath(app_path.lower())):
+                            proc.kill()  # 强制关闭
+                            
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                        continue
+            
+            if closed_processes:
+                print(f"[关闭成功] {app_path} -> {', '.join(set(closed_processes))}")
+                return True
+            else:
+                print(f"[未找到进程] {app_path}")
+                return False
+                
+        except Exception as e:
+            print(f"[关闭失败] {app_path}: {str(e)}")
+            return False
 
     def show_settings(self):
         dialog = SettingsDialog(self)
