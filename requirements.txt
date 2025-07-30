@@ -1,0 +1,4 @@
+PyQt5>=5.15.0
+pywin32>=300
+Pillow>=8.0.0
+psutil>=5.8.0
