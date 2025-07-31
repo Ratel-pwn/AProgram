@@ -76,3 +76,38 @@ def launch_application(path):
     except Exception as e:
         print(f"[启动失败] {path}: {str(e)}")
         return False
+
+
+def is_application_running(app_path):
+    """检测应用程序是否正在运行"""
+    try:
+        # 处理快捷方式
+        if app_path.endswith('.lnk'):
+            target_path = resolve_lnk(app_path)
+            if target_path and os.path.exists(target_path):
+                app_path = target_path
+
+        # 获取应用的可执行文件名
+        app_name = os.path.basename(app_path).lower()
+
+        # 遍历所有进程
+        for proc in psutil.process_iter(['pid', 'name', 'exe']):
+            try:
+                proc_info = proc.info
+
+                # 检查进程名是否匹配
+                if proc_info['name'] and proc_info['name'].lower() == app_name:
+                    return True
+
+                # 检查完整路径是否匹配
+                if proc_info['exe'] and os.path.normpath(proc_info['exe'].lower()) == os.path.normpath(app_path.lower()):
+                    return True
+
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+
+        return False
+
+    except Exception as e:
+        print(f"[状态检测失败] {app_path}: {str(e)}")
+        return False

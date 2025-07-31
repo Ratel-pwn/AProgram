@@ -1,10 +1,11 @@
 """应用卡片组件"""
 import os
 from PyQt5.QtWidgets import QFrame, QVBoxLayout, QLabel, QPushButton, QMessageBox
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QPainter, QColor
 from config.constants import CARD_WIDTH, CARD_HEIGHT, ICON_SIZE
 from utils.file_utils import get_app_name
-from utils.process_utils import launch_application
+from utils.process_utils import launch_application, is_application_running
 
 
 class AppCardWidget(QFrame):
@@ -13,6 +14,7 @@ class AppCardWidget(QFrame):
         self.path = path
         self.parent_launcher = parent_launcher
         self.enabled = enabled
+        self.is_running = False
 
         # 设置固定大小
         self.setFixedSize(CARD_WIDTH, CARD_HEIGHT)
@@ -71,6 +73,29 @@ class AppCardWidget(QFrame):
         # 单击切换选中状态，双击启动应用
         self.mousePressEvent = self.on_mouse_press
         self.mouseDoubleClickEvent = self.launch_app
+
+        # 创建状态指示器（绿色圆点）
+        self.status_indicator = QLabel(self)
+        self.status_indicator.setFixedSize(12, 12)
+        self.status_indicator.setStyleSheet("""
+            QLabel {
+                background-color: #10B981;
+                border-radius: 6px;
+                border: 2px solid white;
+            }
+        """)
+        self.status_indicator.hide()  # 初始隐藏
+
+        # 将状态指示器定位到左下角
+        self.status_indicator.move(8, self.height() - 20)
+
+        # 启动状态检测定时器
+        self.status_timer = QTimer()
+        self.status_timer.timeout.connect(self.update_running_status)
+        self.status_timer.start(2000)  # 每2秒检查一次状态
+
+        # 立即检查一次状态
+        self.update_running_status()
 
     def update_style(self):
         """更新样式表，根据选中状态设置背景色"""
@@ -131,9 +156,10 @@ class AppCardWidget(QFrame):
                 self.parent_launcher.auto_save_current_group()
 
     def resizeEvent(self, event):
-        """窗口大小改变时重新定位删除按钮"""
+        """窗口大小改变时重新定位删除按钮和状态指示器"""
         super().resizeEvent(event)
         self.delete_btn.move(self.width() - 22, 2)
+        self.status_indicator.move(8, self.height() - 20)
 
     def enterEvent(self, event):
         """鼠标进入事件"""
@@ -153,7 +179,23 @@ class AppCardWidget(QFrame):
         if reply == QMessageBox.Yes:
             self.parent_launcher.remove_app_from_current_group(self.path)
 
+    def update_running_status(self):
+        """更新应用运行状态"""
+        try:
+            running = is_application_running(self.path)
+            if running != self.is_running:
+                self.is_running = running
+                if self.is_running:
+                    self.status_indicator.show()
+                else:
+                    self.status_indicator.hide()
+        except Exception as e:
+            print(f"[状态更新失败] {self.path}: {str(e)}")
+
     def launch_app(self, event):
         """启动应用"""
         if not launch_application(self.path):
             QMessageBox.warning(self, "启动失败", f"无法启动应用：\n{self.path}")
+        else:
+            # 启动后立即更新状态
+            QTimer.singleShot(1000, self.update_running_status)

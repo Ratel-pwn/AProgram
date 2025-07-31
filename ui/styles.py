@@ -64,6 +64,7 @@ def get_main_window_style():
             font-weight: bold;
             font-size: 15px;
             padding: 6px 0;
+            background-color: transparent;
         }
         QMenu {
             background-color: rgba(255, 255, 255, 0.95);
@@ -148,11 +149,13 @@ def get_settings_dialog_style():
         QLabel {
             color: #2d3748;
             font-size: 14px;
+            background-color: transparent;
         }
         QCheckBox {
             color: #2d3748;
             font-size: 14px;
             spacing: 8px;
+            background-color: transparent;
         }
         QCheckBox::indicator {
             width: 18px;

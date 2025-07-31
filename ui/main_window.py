@@ -13,7 +13,7 @@ from config.settings import load_config, save_config, load_settings, save_settin
 from config.constants import SCALE_FACTOR, BUTTON_HEIGHT, APP_ICON_PATH
 from utils.file_utils import is_valid_app_file, get_app_name
 from utils.icon_utils import get_app_icon
-from utils.process_utils import close_application_by_path, launch_application
+from utils.process_utils import close_application_by_path, launch_application, is_application_running
 from utils.system_utils import create_default_icon
 from .app_card import AppCardWidget
 from .settings_dialog import SettingsDialog
@@ -428,6 +428,12 @@ class SoftwareLauncher(QWidget):
             action_copy.triggered.connect(copy_group)
             menu.addAction(action_copy)
 
+            # 切换组功能
+            action_switch = QAction("🔄 切换组", self)
+            action_switch.triggered.connect(
+                lambda: self.smart_switch_group(group_name))
+            menu.addAction(action_switch)
+
             action_delete = QAction("🗑 删除组", self)
             action_delete.triggered.connect(
                 lambda: self.delete_group(group_name))
@@ -438,6 +444,76 @@ class SoftwareLauncher(QWidget):
             menu.addAction(action_add)
 
         menu.exec_(self.group_list.mapToGlobal(pos))
+
+    def smart_switch_group(self, target_group_name):
+        """智能切换组：关闭原组启动但目标组未启用的应用，启动目标组启用但原组未启动的应用"""
+        if not self.current_group or target_group_name == self.current_group:
+            self.switch_to_group(target_group_name)
+            return
+
+        try:
+            # 获取当前组和目标组的应用数据
+            current_group_data = self.data.get(self.current_group, [])
+            target_group_data = self.data.get(target_group_name, [])
+
+            # 标准化数据格式，确保都是字典格式
+            def normalize_group_data(group_data):
+                normalized = []
+                for item in group_data:
+                    if isinstance(item, str):
+                        normalized.append({'path': item, 'enabled': True})
+                    else:
+                        normalized.append(item)
+                return normalized
+
+            current_apps = normalize_group_data(current_group_data)
+            target_apps = normalize_group_data(target_group_data)
+
+            # 创建路径到启用状态的映射
+            current_enabled = {app['path']: app.get(
+                'enabled', True) for app in current_apps}
+            target_enabled = {app['path']: app.get(
+                'enabled', True) for app in target_apps}
+
+            # 统计操作
+            closed_count = 0
+            launched_count = 0
+
+            # 1. 关闭原组启动但目标组未启用的应用
+            for app_path in current_enabled:
+                if current_enabled[app_path]:  # 当前组中启用
+                    target_app_enabled = target_enabled.get(app_path, False)
+                    if not target_app_enabled:  # 目标组中未启用或不存在
+                        if is_application_running(app_path):
+                            if close_application_by_path(app_path):
+                                closed_count += 1
+
+            # 2. 启动目标组启用但原组未启动的应用
+            for app_path in target_enabled:
+                if target_enabled[app_path]:  # 目标组中启用
+                    current_app_enabled = current_enabled.get(app_path, False)
+                    if not current_app_enabled:  # 当前组中未启用或不存在
+                        if not is_application_running(app_path):
+                            if launch_application(app_path):
+                                launched_count += 1
+
+            # 3. 切换到目标组
+            self.switch_to_group(target_group_name)
+
+            # 显示操作结果
+            message = f"🔄 已切换到组 '{target_group_name}'"
+            if closed_count > 0 or launched_count > 0:
+                message += f"\n关闭了 {closed_count} 个应用，启动了 {launched_count} 个应用"
+
+            self.status_label.setText(message)
+            print(
+                f"[智能切换] {self.current_group} -> {target_group_name}, 关闭: {closed_count}, 启动: {launched_count}")
+
+        except Exception as e:
+            print(f"[切换组失败] {str(e)}")
+            self.status_label.setText(f"❌ 切换组失败: {str(e)}")
+            # 即使出错也要切换组
+            self.switch_to_group(target_group_name)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -478,7 +554,6 @@ class SoftwareLauncher(QWidget):
                 set_auto_start(True)
             else:
                 set_auto_start(False)
-            QMessageBox.information(self, "设置已保存", "设置已保存")
 
     def setup_system_tray(self):
         """初始化系统托盘图标"""
