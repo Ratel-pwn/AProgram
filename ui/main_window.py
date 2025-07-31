@@ -17,6 +17,7 @@ from utils.process_utils import close_application_by_path, launch_application
 from utils.system_utils import create_default_icon
 from .app_card import AppCardWidget
 from .settings_dialog import SettingsDialog
+from .flow_layout import FlowLayout
 from .styles import (get_main_window_style, get_close_button_style,
                      get_program_container_style, get_scroll_area_style)
 
@@ -70,7 +71,7 @@ class SoftwareLauncher(QWidget):
         # 创建一个可滚动的区域来放置应用卡片
         self.program_scroll = QScrollArea()
         self.program_scroll.setWidgetResizable(True)
-        self.program_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.program_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.program_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.program_scroll.setStyleSheet(get_scroll_area_style())
 
@@ -78,8 +79,7 @@ class SoftwareLauncher(QWidget):
         self.program_cards_container = QWidget()
         self.program_cards_container.setStyleSheet(
             "background-color: transparent;")
-        self.program_cards_layout = QHBoxLayout()
-        self.program_cards_layout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self.program_cards_layout = FlowLayout()
         self.program_cards_layout.setSpacing(int(12*scale))
         self.program_cards_layout.setContentsMargins(5, 5, 5, 5)
         self.program_cards_container.setLayout(self.program_cards_layout)
@@ -98,12 +98,12 @@ class SoftwareLauncher(QWidget):
         self.add_group_btn.setMinimumHeight(btn_height)
         self.add_group_btn.clicked.connect(self.add_group)
 
-        self.launch_btn = QPushButton("🚀 启动当前组")
+        self.launch_btn = QPushButton("🚀 启动组")
         self.launch_btn.setFont(btn_font)
         self.launch_btn.setMinimumHeight(btn_height)
         self.launch_btn.clicked.connect(self.launch_all)
 
-        self.close_btn = QPushButton("🛑 关闭当前组")
+        self.close_btn = QPushButton("🛑 关闭组")
         self.close_btn.setFont(btn_font)
         self.close_btn.setMinimumHeight(btn_height)
         self.close_btn.clicked.connect(self.close_all)
