@@ -54,6 +54,9 @@ class SoftwareLauncher(QWidget):
         self.group_list.customContextMenuRequested.connect(
             self.show_group_context_menu)
 
+        # 重写鼠标按下事件，阻止右键选中
+        self.group_list.mousePressEvent = self.group_list_mouse_press_event
+
         # 先创建状态栏
         self.status_label = QLabel("就绪")
         self.status_label.setStyleSheet(
@@ -387,6 +390,15 @@ class SoftwareLauncher(QWidget):
 
         self.status_label.setText(
             f"🛑 已尝试关闭 {closed_count}/{total_enabled} 个已启用程序")
+
+    def group_list_mouse_press_event(self, event):
+        """处理组列表鼠标按下事件，阻止右键选中"""
+        if event.button() == Qt.RightButton:
+            # 右键时不调用默认的mousePressEvent，阻止选中行为
+            return
+        else:
+            # 左键时正常处理
+            QListWidget.mousePressEvent(self.group_list, event)
 
     def show_group_context_menu(self, pos):
         item = self.group_list.itemAt(pos)
