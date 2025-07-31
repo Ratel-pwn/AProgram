@@ -72,9 +72,6 @@ pip install -r requirements.txt
 python main.py
 ```
 
-### 开发环境
-建议使用IDE进行开发，可以更好地利用模块化结构进行代码导航和调试。
-
 ## 注意事项
 
 1. **向后兼容**：重构后的代码与原版本完全兼容
