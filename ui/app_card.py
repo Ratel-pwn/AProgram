@@ -16,6 +16,12 @@ class AppCardWidget(QFrame):
         self.enabled = enabled
         self.is_running = False
 
+        # 用于解决单击双击冲突的定时器
+        self.click_timer = QTimer()
+        self.click_timer.setSingleShot(True)
+        self.click_timer.timeout.connect(self.handle_single_click)
+        self.double_click_detected = False
+
         # 设置固定大小
         self.setFixedSize(CARD_WIDTH, CARD_HEIGHT)
 
@@ -70,9 +76,9 @@ class AppCardWidget(QFrame):
         # 将删除按钮定位到右上角
         self.delete_btn.move(self.width() - 22, 2)
 
-        # 单击切换选中状态，双击启动应用
+        # 重写鼠标事件处理，解决单击双击冲突
         self.mousePressEvent = self.on_mouse_press
-        self.mouseDoubleClickEvent = self.launch_app
+        self.mouseDoubleClickEvent = self.on_double_click
 
         # 创建状态指示器（绿色圆点）
         self.status_indicator = QLabel(self)
@@ -146,8 +152,26 @@ class AppCardWidget(QFrame):
             """)
 
     def on_mouse_press(self, event):
-        """处理鼠标单击事件，切换选中状态"""
+        """处理鼠标按下事件，延迟处理单击避免与双击冲突"""
         if event.button() == Qt.LeftButton:
+            # 重置双击检测标志
+            self.double_click_detected = False
+            # 启动延迟定时器，200ms后处理单击（如果没有双击）
+            self.click_timer.start(200)
+
+    def on_double_click(self, event):
+        """处理双击事件，启动应用"""
+        if event.button() == Qt.LeftButton:
+            # 设置双击检测标志，取消单击处理
+            self.double_click_detected = True
+            self.click_timer.stop()
+            # 启动应用
+            self.launch_app(event)
+
+    def handle_single_click(self):
+        """处理延迟的单击事件，切换启用状态"""
+        # 只有在没有双击的情况下才处理单击
+        if not self.double_click_detected:
             # 切换选中状态
             self.enabled = not self.enabled
             self.update_style()
@@ -192,7 +216,7 @@ class AppCardWidget(QFrame):
         except Exception as e:
             print(f"[状态更新失败] {self.path}: {str(e)}")
 
-    def launch_app(self, event):
+    def launch_app(self, event=None):
         """启动应用"""
         if not launch_application(self.path):
             QMessageBox.warning(self, "启动失败", f"无法启动应用：\n{self.path}")

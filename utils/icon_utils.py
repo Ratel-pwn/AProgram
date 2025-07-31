@@ -170,7 +170,7 @@ def get_app_icon(path):
 
 
 def create_rounded_icon(icon, size, radius=8):
-    """创建圆角图标"""
+    """创建圆角图标（修复所有角都是圆角）"""
     if icon.isNull():
         return icon
 
@@ -185,24 +185,19 @@ def create_rounded_icon(icon, size, radius=8):
 
     painter = QPainter(rounded_pixmap)
     painter.setRenderHint(QPainter.Antialiasing)
+    painter.setRenderHint(QPainter.SmoothPixmapTransform)
 
-    # 创建圆角路径
+    # 使用更精确的方法创建圆角路径
+    from PyQt5.QtCore import QRectF
+    rect = QRectF(0, 0, size, size)
     path = QPainterPath()
-    path.addRoundedRect(0, 0, size, size, radius, radius)
+    path.addRoundedRect(rect, radius, radius, Qt.AbsoluteSize)
 
     # 设置裁剪区域为圆角
     painter.setClipPath(path)
 
     # 绘制原始图标
-    painter.drawPixmap(0, 0, pixmap)
-
-    # # 绘制圆角边框（可选）
-    # painter.setClipping(False)  # 取消裁剪，绘制边框
-    # from PyQt5.QtGui import QPen
-    # pen = QPen(Qt.lightGray, 1)
-    # painter.setPen(pen)
-    # painter.setBrush(Qt.NoBrush)
-    # painter.drawRoundedRect(0, 0, size-1, size-1, radius, radius)
+    painter.drawPixmap(0, 0, size, size, pixmap)
 
     painter.end()
 
