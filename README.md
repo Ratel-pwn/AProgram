@@ -1,41 +1,24 @@
-# 项目名称
-AProgram
+# AProgram
 
-## 项目描述
-AProgram 是一款软件启动器，旨在管理多个应用程序的启动和关闭。通过简便的用户界面，用户可以轻松地控制各种应用程序，提升工作效率。
+AProgram 是 Windows 软件组启动器。为办公、游戏等场景配置应用，之后可以从系统托盘直接切换环境。切换时，AProgram 会启动目标组新增的应用，向离开当前组的应用发出关闭请求，并保留两组共用的应用。
 
-## 特性
-- **批量启动/关闭应用**: 用户只需一键即可同时启动或关闭多个应用程序。
-- **智��配置管理**: 可根据用户的使用习惯自动配置应用设置。
-- **Windows优化**: 提供系统优化建议，确保最佳性能。
+## 使用
 
-## 安装步骤
-1. 从 [GitHub Releases](https://github.com/Ratel-pwn/AProgram/releases) 页面下载最新版本。
-2. 解压缩下载的文件到您希望安装的目录。
-3. 运行 `setup.exe` 文件，按照提示完成安装。
+1. 打开 `aprogram.exe`，新建软件组。
+2. 将 `.exe` 或 `.lnk` 拖入组内。单击应用切换它是否参与组操作，双击单独启动。
+3. 右键单击系统托盘图标并选择软件组。左键单击托盘图标可恢复主窗口。
 
-## 使用指南
-- 启动应用程序：打开 AProgram，选择需要启动的应用，点击“启动”按钮。
-- 关闭应用程序：在已运行的应用列表中，选择需要关闭的应用，点击“关闭”按钮。
+通过「设置与导入」选择旧版 AProgram 的目录，可导入 `software_groups.json` 和 `settings.json`。新版配置保存在 `%LOCALAPPDATA%\AProgram\state.json`。
 
-## 配置
-用户可以在 `设置` 中自定义应用的启动和关闭顺序，以及其他高级选项。
+## 从源码构建
 
-## 项目结构概览
-```
-AProgram/
-|-- src/          # 源代码
-|-- docs/         # 文档
-|-- tests/        # 测试用例
-|-- setup.exe     # 安装程序
-|-- README.md     # 项目说明文件
+在 Windows x64 上安装 Rust MSVC 工具链、Visual Studio C++ Build Tools 和 Windows SDK。Release 构建需要 SDK 中的 `fxc.exe`。请在 Visual Studio 开发者终端运行以下命令，或将环境变量 `GPUI_FXC_PATH` 指向本机的 `fxc.exe`。
+
+```powershell
+.\build.bat
+.\target\release\aprogram.exe
 ```
 
-## 截图
-![Screenshots Placeholder](path/to/screenshot.png)
+Rust 入口位于 [src/main.rs](src/main.rs)，主窗口由 [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui) 渲染。仓库里的 [main.py](main.py) 是旧版入口。[重构规格](docs/superpowers/specs/2026-11-08-rust-gpui-launcher-design.md)
 
-## 贡献指南
-欢迎贡献！请参考 [CONTRIBUTING.md](CONTRIBUTING.md) 中的指南。
-
-## 许可证
-本项目采用 MIT 许可证，详情请参见 [LICENSE](LICENSE) 文件。
+本项目采用 [GNU AGPL v3](LICENSE)。

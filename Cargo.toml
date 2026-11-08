@@ -1,0 +1,37 @@
+[package]
+name = "aprogram"
+version = "0.2.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+
+[dependencies]
+anyhow = "1"
+async-channel = "2"
+gpui = { version = "=0.2.2", default-features = false, features = ["windows-manifest"] }
+image = { version = "0.25", default-features = false }
+raw-window-handle = "0.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+tempfile = "3"
+windows = { version = "0.61.3", features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Controls",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.dev]
+debug = 0
+
+[profile.release]
+strip = "debuginfo"

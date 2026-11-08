@@ -72,3 +72,6 @@ app.ico
 
 # Ignore project-specific data
 software_groups.json
+
+# Cargo build artifacts
+/target/
